@@ -4,11 +4,11 @@ import pandas as pd
 from scipy.optimize import minimize
 import math
 from scipy.integrate import odeint
-import dataset
+from dataset import Dataset
 
 
 pd.set_option("display.max.columns", None)
-d = dataset.data.data
+d = Dataset().data
 TestF = d.head(4)
 
 def T_amb(t):
