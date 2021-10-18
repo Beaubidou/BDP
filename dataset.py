@@ -23,11 +23,12 @@ class Dataset:
                                             names=['time', 'current_value_diningroom', 'setpoint_diningroom'])
         self.__raw_livingroom = pd.read_csv('Mesures/temperature_livingroom.csv', ',', header=0,
                                             names=['time', 'current_value_livingroom', 'setpoint_livingroom'])
-        # à ajouter outside, heating etc
+        self.__raw_outside = pd.read_csv('Mesures/temperature_outside.csv', ',', header=0,
+                                         names=['time', 'current_value_outside'])
 
         # Putting them in a list in order to merge them on date
         data_frames = [self.__raw_bathroom, self.__raw_kitchen, self.__raw_bedroom1, self.__raw_bedroom2,
-                       self.__raw_bedroom3, self.__raw_diningroom, self.__raw_livingroom]
+                       self.__raw_bedroom3, self.__raw_diningroom, self.__raw_livingroom, self.__raw_outside]
 
         self.data = reduce(lambda left, right: pd.merge(left, right, on='time'), data_frames)
 
