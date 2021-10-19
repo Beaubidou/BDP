@@ -16,6 +16,6 @@ course which is given by **Bertrand Cornélusse**, **Pierre Geurts** and **Gille
 
 * **Ludo Bissot** - [contact](ludo.bissot@student.uliege.be)
 * **Pierre Chapeau** - [contact](@student.uliege.be)
-* **Corentin Merle** - [contact](@student.uliege.be)
+* **Corentin Merle** - [contact](Corentin.Merle@student.uliege.be)
 * **Guillaume Vrijens** - [contact](@student.uliege.be)
 
