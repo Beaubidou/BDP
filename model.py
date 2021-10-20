@@ -38,6 +38,7 @@ class Model:
         tmp = self.resistors + self.capacitors
         tmp.append(self.q)
 
+        # parameters = (R1, C1,..., Ri, Ci,..., Rn, Cn, Q)
         self.parameters = tuple(tmp)
 
         # For the representation of our results 
@@ -60,7 +61,7 @@ class Model:
         params = []
         for arg in argv:
             params.append(arg)
-        print(params)
+        #print(params)
         
         d_temp = []
 
