@@ -3,7 +3,7 @@ import datetime
 from sklearn.model_selection import train_test_split
 from dataset import Dataset
 
-def train_test_sample_split(dataset, start_date, end_date, test_ratio=1/2, multi_z=False):
+def train_test_sample_split(dataset, start_date="2020-05-24", end_date="2021-05-24", test_ratio=1/2, multi_z=False):
 	"""
     Separate the provied dataset into a train set and a test set
     :param start_date: [str ("YYYY-MM-DD")] 
