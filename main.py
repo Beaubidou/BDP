@@ -30,17 +30,13 @@ if __name__ == '__main__':
     
     print("model fitted")
     q_para = res.x[0]
-    R = res.x[1]
-    C = res.x[2]
-    params = q_para, R, C
-    inistate = TestF['current_value_livingroom'][start]
+    r = res.x[1]
+    c = res.x[2]
+    params = q_para, r, c
+    state_init = TestF['current_value_livingroom'][start]
     #fitted = g(time, inistate, params)
 
     print(params)
     #print(fitted)
     #print
     print(TestF['current_value_livingroom'])
-    
-
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
