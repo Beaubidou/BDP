@@ -53,10 +53,12 @@ class Dataset:
                     room_area[6]*self.data.loc[i].at["current_value_livingroom"]) / sum(room_area) ,2) )
 
             self.data.insert(1, 'current_value_house', current_mean_value)
+            self.data['time'] = pd.to_datetime(self.data.time, infer_datetime_format=True)
+            self.data['time'] = self.data['time'].dt.floor('T')
             
-
             self.data.to_csv('Mesures/data.csv', index=False, header=True)
 
         else : 
 
             self.data = pd.read_csv('Mesures/data.csv', sep=',')
+            self.data['time'] = pd.to_datetime(self.data.time, infer_datetime_format=True)
