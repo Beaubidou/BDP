@@ -31,4 +31,3 @@ class Dataset:
                        self.__raw_bedroom3, self.__raw_diningroom, self.__raw_livingroom, self.__raw_outside]
 
         self.data = reduce(lambda left, right: pd.merge(left, right, on='time'), data_frames)
-
