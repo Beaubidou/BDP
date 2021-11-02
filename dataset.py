@@ -1,14 +1,15 @@
 import pandas as pd
 from functools import reduce
+from sklearn.model_selection import train_test_split
 
 
 class Dataset:
 
-    def __init__(self, reload_all=False, interpolate=False):
+    def __init__(self, reload_all=False, interpolate=True):
         """
         :param reload_all: [bool] if True, compute the average temp. and add it to the dataframe. If False, load data
                             from data.csv which already containes average temp. computed (to avoid computing time)
-        :param interpolate: [bool] if True (and reload_all=True), add and interpolate missing samples
+        :param interpolate: [bool] if True, add and interpolate missing samples
         """
 
         if reload_all:
@@ -41,11 +42,11 @@ class Dataset:
                 new_data_frames_rooms = []
 
                 for curr_data in data_frames_rooms:
-                    curr_data['time'] = pd.to_datetime(curr_data.time, infer_datetime_format=True)
-                    curr_data['time'] = curr_data['time'].dt.floor('T')
+                    curr_data['time'] = pd.to_datetime(curr_data.time, infer_datetime_format=True) # Convert 'time' column to datetime type
+                    curr_data['time'] = curr_data['time'].dt.floor('T') # Round minute of 'time' column
                     curr_data.set_index('time', inplace=True)
                     newIndex = pd.date_range(start=curr_data.index[0],
-                                            end=curr_data.index[len(curr_data.index)-1], freq='5min')
+                                            end=curr_data.index[len(curr_data.index)-1], freq='5min') # Create a 5 min step vector form the first to the last date
                     curr_data = curr_data.reindex(newIndex)
                     curr_data.iloc[:, 0] = curr_data.iloc[:, 0].interpolate(method='time')
                     curr_data.iloc[:, 1] = curr_data.iloc[:, 1].fillna(method='ffill')
@@ -75,10 +76,20 @@ class Dataset:
 
             else:
                 # Putting them in a list in order to merge them on date
-                data_frames = [self.__raw_bathroom, self.__raw_kitchen, self.__raw_bedroom1, self.__raw_bedroom2,
+                loop_data_frames = [self.__raw_bathroom, self.__raw_kitchen, self.__raw_bedroom1, self.__raw_bedroom2,
                                self.__raw_bedroom3, self.__raw_diningroom, self.__raw_livingroom, self.__raw_outside, self.__raw_heating_syst]
+                data_frames = []
+
+                for curr_data in loop_data_frames:
+                    curr_data['time'] = pd.to_datetime(curr_data.time, infer_datetime_format=True)
+                    curr_data['time'] = curr_data['time'].dt.floor('T')
+                    data_frames.append(curr_data)
 
             self.data = reduce(lambda left, right: pd.merge(left, right, on='time'), data_frames)
+
+            print("nb of samples = " + str(self.data.shape[0]))
+
+            # Compute two column containing the average temperature and average setpoint of the house 
 
             # room_area = [bathroom_area, kitchen_area, bedroom1_area, bedroom2_area, bedroom3_area, diningroom_area, livingroom_area]
             room_area = [4 * 3.87, 4 * 3.87, 4 * 3.94, 4 * 4.60, 4 * 3.13, 4 * 3.94, 4 * 7.81]
@@ -101,19 +112,69 @@ class Dataset:
 
             self.data.insert(1, 'setpoint_house', current_mean_setpoint)
             self.data.insert(1, 'current_value_house', current_mean_value)
-            self.data['time'] = pd.to_datetime(self.data.time, infer_datetime_format=True)
-            self.data['time'] = self.data['time'].dt.floor('T')
+
+            # Write data in csv file
             
-            self.data.to_csv('Mesures/data.csv', index=False, header=True)
+            if interpolate:
+                self.data.to_csv('Mesures/data_interpolated.csv', index=False, header=True)
+            else: 
+                self.data.to_csv('Mesures/data.csv', index=False, header=True)
 
         else : 
 
-            self.data = pd.read_csv('Mesures/data.csv', sep=',')
+            # Read data from csv file in the 'Mesures' folder
+
+            if interpolate:
+                try:
+                    self.data = pd.read_csv('Mesures/data_interpolated.csv', sep=',')
+                except FileNotFoundError:
+                    print("File not found. The file is probably not loaded, try first to load your file in your 'Mesures' folder with the following parametres : data = Dataset(reload_all=True, interpolate=True)")
+            else:
+                try:
+                    self.data = pd.read_csv('Mesures/data.csv', sep=',')
+                except FileNotFoundError:
+                    print("File not found. The file is probably not loaded, try first to load your file in your 'Mesures' folder with the following parametres : data = Dataset(reload_all=True, interpolate=False)")
+
+
             self.data['time'] = pd.to_datetime(self.data.time, infer_datetime_format=True)
+
+
+    def train_test_sample_split(self, start_date="2020-05-24 19:40:00", end_date="2021-05-24 17:10:00", test_ratio=1/2, multi_z=False, shuffle=False):
+        """
+        Separate the provied dataset into a train set and a test set
+        :param start_date: [str ("YYYY-MM-DD")] 
+        :param end_date: [str ("YYYY-MM-DD")] 
+        :param test_ratio: [float < 1] the test/data set ratio 
+        :param multi_z: [bool] True if multi-zone, False if single-zone
+        :return: X_train, X_test, y_train, y_test
+        """
+
+        i_s = self.data.index[self.data['time'] == start_date]
+        i_e = self.data.index[self.data['time'] == end_date]
+
+        ds = self.data[i_s[0] : i_e[0]]
+
+        if multi_z:
+            y = ds
+            X = ds
+
+        else:
+            y = ds
+            X = ds
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_ratio, shuffle=shuffle)
+
+        return X_train, X_test, y_train, y_test
 
 
 # test
 if __name__ == '__main__':
 
-    data = Dataset(reload_all=True, interpolate=True).data.head(100)
-    print(data)
+    dataset = Dataset(reload_all=False, interpolate=True)
+
+    X_train, X_test, y_train, y_test = dataset.train_test_sample_split(start_date="2020-05-24 19:40:00", end_date="2020-05-25 00:00:00",)
+
+
+
+    print(X_train)
+    print(X_test)
