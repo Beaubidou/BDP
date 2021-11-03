@@ -1,5 +1,9 @@
 import pandas as pd
 from functools import reduce
+import matplotlib.pyplot as plt
+import numpy as np
+
+from scipy.interpolate import interp1d
 from sklearn.model_selection import train_test_split
 
 
@@ -136,10 +140,25 @@ class Dataset:
                     print("File not found. The file is probably not loaded, try first to load your file in your 'Mesures' folder with the following parametres : data = Dataset(reload_all=True, interpolate=False)")
 
 
-            self.data['time'] = pd.to_datetime(self.data.time, infer_datetime_format=True)
+            self.data['time'] = pd.to_datetime(self.data.time, infer_datetime_format=True).astype('datetime64[ns]')
+
+        #Have an array of time starting at 0 for instant 0 and going to the end of the time set
+        self.data['timeIntervals'] = np.linspace(0, 5 * (len(self.data)-1), num=len(self.data))
+        self.data.set_index('timeIntervals', inplace=True)
+
+        # Create functions for inputs in the model simulation
+        self.function_T_out = interp1d(self.data.index, self.data['current_value_outside'])
+        self.function_T_set_house = interp1d(self.data.index, self.data['setpoint_house'])
+        #Add more for the multizone
 
 
-    def train_test_sample_split(self, start_date="2020-05-24 19:40:00", end_date="2021-05-24 17:10:00", test_ratio=1/2, multi_z=False, shuffle=False):
+    def getInputs(self, multizone=False):
+        if multizone:
+            return self.function_T_out, self.function_T_set_house #,...
+        else:
+            return self.function_T_out, self.function_T_set_house
+
+    def train_test_sample_split(self, start_date="2020-05-24 19:40:00", length=20, test_ratio=0.33, multi_z=False, shuffle=False):
         """
         Separate the provied dataset into a train set and a test set
         :param start_date: [str ("YYYY-MM-DD")] 
@@ -150,31 +169,69 @@ class Dataset:
         """
 
         i_s = self.data.index[self.data['time'] == start_date]
-        i_e = self.data.index[self.data['time'] == end_date]
+        i_e = i_s + 5 * length
 
         ds = self.data[i_s[0] : i_e[0]]
 
-        if multi_z:
+        if multi_z: #Put all the column we want for the multizone and push it on gitHub
             y = ds
             X = ds
 
         else:
-            y = ds
-            X = ds
+            y = ds[['current_value_house']] # True value of T_in
+            X = ds['time'] # Inputs are hadeled by functions -> just return time where happend the sets for plots
 
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_ratio, shuffle=shuffle)
+        
 
         return X_train, X_test, y_train, y_test
+    
+    def plotDataset(self):
+        plt.figure()
+        try:
+            plt.title("")
+            plt.xlabel('Time')
+            plt.ylabel('Temperature (°c)')
 
+            plt.plot(self.data['time'], self.data['current_value_outside'], label='T_out', linewidth=0.5)
+            plt.plot(self.data['time'], self.data['current_value_house'], label='T_house', linewidth=0.5)
+            plt.plot(self.data['time'], self.data['setpoint_house'], label='Set_house', linewidth=0.5)
+            #plt.plot(self.data['time'], self.data['water_temperature'], label='T_Heater', linewidth=0.5)
+
+            plt.legend()
+            #plt.xlim(0, 2)
+
+            fname = "Info_data_SZ"
+            plt.savefig("plots/{}.png".format(fname))
+
+        finally:
+            plt.close()
+    
+    def drawBoxplot(self):
+        plt.figure()
+        try:
+            # draw boxplot of each column of the data -> to compare it with our predictions later
+            self.data.boxplot(column=['current_value_livingroom', 'current_value_outside'])
+            # return axessubplot object
+            fname = "Boxplots_T_living&T_outside"
+            plt.savefig("plots/{}.png".format(fname))
+        finally:
+            plt.close()
 
 # test
 if __name__ == '__main__':
 
+    # First time need to load all the data -> it takes some time  but after that just take the second line and it's quick
+    #dataset = Dataset(reload_all=True, interpolate=True)
     dataset = Dataset(reload_all=False, interpolate=True)
 
-    X_train, X_test, y_train, y_test = dataset.train_test_sample_split(start_date="2020-05-24 19:40:00", end_date="2020-05-25 00:00:00",)
 
+    X_train, X_test, y_train, y_test = dataset.train_test_sample_split(start_date="2020-05-24 19:40:00", length=50)
 
+    #print(np.array(y_train.head(1)['current_value_house']))
 
     print(X_train)
     print(X_test)
+
+    dataset.plotDataset()
+    #dataset.drawBoxplot()
