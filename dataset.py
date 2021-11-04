@@ -149,12 +149,24 @@ class Dataset:
         # Create functions for inputs in the model simulation
         self.function_T_out = interp1d(self.data.index, self.data['current_value_outside'])
         self.function_T_set_house = interp1d(self.data.index, self.data['setpoint_house'])
+
         #Add more for the multizone
+        self.function_T_set_kitchen = interp1d(self.data.index, self.data['setpoint_kitchen'])
+        self.function_T_set_diningroom = interp1d(self.data.index, self.data['setpoint_diningroom'])
+        self.function_T_set_livingroom = interp1d(self.data.index, self.data['setpoint_livingroom'])
+        self.function_T_set_bathroom = interp1d(self.data.index, self.data['setpoint_bathroom'])
+        self.function_T_set_bedroom1 = interp1d(self.data.index, self.data['setpoint_bedroom1'])
+        self.function_T_set_bedroom2 = interp1d(self.data.index, self.data['setpoint_bedroom2'])
+        self.function_T_set_bedroom3 = interp1d(self.data.index, self.data['setpoint_bedroom3'])
+
 
 
     def getInputs(self, multizone=False):
         if multizone:
-            return self.function_T_out, self.function_T_set_house #,...
+            return self.function_T_out, self.function_T_set_kitchen, self.function_T_set_diningroom, \
+                self.function_T_set_livingroom, self.function_T_set_bathroom, self.function_T_set_bedroom1, \
+                self.function_T_set_bedroom2, self.function_T_set_bedroom3
+
         else:
             return self.function_T_out, self.function_T_set_house
 
@@ -174,19 +186,19 @@ class Dataset:
         ds = self.data[i_s[0] : i_e[0]]
 
         if multi_z: #Put all the column we want for the multizone and push it on gitHub
-            y = ds
-            X = ds
+            y = ds[['current_value_kitchen', 'current_value_diningroom', 'current_value_livingroom', 'current_value_bathroom', 'current_value_bedroom1', 'current_value_bedroom2', 'current_value_bedroom3']]
+            X = ds['time']
 
         else:
             y = ds[['current_value_house']] # True value of T_in
-            X = ds['time'] # Inputs are hadeled by functions -> just return time where happend the sets for plots
+            X = ds['time'] # Inputs are hadeled by functions -> just return time where happend the sets for plot
 
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_ratio, shuffle=shuffle)
         
 
         return X_train, X_test, y_train, y_test
     
-    def plotDataset(self):
+    def plotDataset(self): 
         plt.figure()
         try:
             plt.title("")
