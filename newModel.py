@@ -18,16 +18,17 @@ class model:
 
 
     def __init__(self):
-        self.R = [10, 10, 10, 10, 10, 10, 10]
-        #self.C = [10**5, 10**5, 10**5, 10**5, 10**5, 10**5, 10**5]
-        self.C = [10**1, 10**1, 10**1, 10**1, 10**1, 10**1, 10**1]
-        self.q = [10, 10, 10, 10, 10, 10, 10]
+        #self.R = [15, 15, 30, 10, 15, 15, 12]
+        self.R = [6, 1.5, 2, 2, 2, 2, 2]
+        self.C = [4*10**4, 4*10**4, 8*10**4, 2*10**4, 4*10**4, 5*10**4, 3*10**4]
+        #self.q = [125, 125, 250, 62, 125, 160, 100]
+        self.q = [100, 100, 200, 50, 100, 130, 80]
         # R12 R123 R47 R45 R56 R67
         self.R_neighbour = [5, 5, 5, 5, 5, 5]
 
         self.variance = 1
 
-        tmp = [self.variance] + self.R + self.C + self.q + self.R_neighbour
+        tmp = [self.variance] + self.q + self.R + self.C + self.R_neighbour
         self.parameters = tmp
 
         
@@ -43,7 +44,7 @@ class model:
         # y_train and y_test return padas.Dataframes for true temperature inside the house
         # The index is ['kitchen', 'diningroom', 'livingroom', 'bathroom', 'bedroom1', 'bedroom2', 'bedroom3']
         # dates_train and dates_test is juste a time vector of the observations for x axis in plots
-        self.dates_train, self.dates_test, self.y_train, self.y_test = dataset.train_test_sample_split(start_date="2020-07-03 10:40:00", length=length, multi_z=True)
+        self.dates_train, self.dates_test, self.y_train, self.y_test = dataset.train_test_sample_split(start_date="2020-11-03 10:40:00", length=length, multi_z=True)
         
         # Get the vector time for odeint and the initial conditions for the differential equations (in the order of vector rooms)
         self.time_train = np.array(self.y_train.index)
@@ -60,7 +61,9 @@ class model:
 
     def q_func(self, T_in, q_para, T_set):
         if (T_set - T_in) + 1 > 0:
-            Q = (T_set - T_in)/q_para
+            #Q = (T_set - T_in)/q_para
+            Q = q_para #will give us a line -> I think there is no correlation between the diff and the power developed by the heater
+            #devrait donner une ligne de pente proportionelle à q_para/5min + forme condensateur via C
         else:
             Q = 0
     
@@ -123,13 +126,13 @@ class model:
         R67 = params[26]
 
         # Set of differential equation (first order complexity)
-        dT1 = (self.q_func(T1, q1, Tset1) - ((T1 - T_out)/Rw1) - ((T1 - T2)/R12) - ((T1 - T3)/R123)) / C1
-        dT2 = (self.q_func(T2, q2, Tset2) - ((T2 - T_out)/Rw2) - ((T2 - T1)/R12) - ((T2 - T3)/R123)) / C2
-        dT3 = (self.q_func(T3, q3, Tset3) - ((T3 - T_out)/Rw3) - ((T3 - T1)/R123) - ((T3 - T2)/R123)) / C3
-        dT4 = (self.q_func(T4, q4, Tset4) - ((T4 - T_out)/Rw4) - ((T4 - T7)/R47) - ((T4 - T7)/R47)) / C4
-        dT5 = (self.q_func(T5, q5, Tset5) - ((T5 - T_out)/Rw5) - ((T5 - T4)/R45) - ((T5 - T4)/R45)) / C5
-        dT6 = (self.q_func(T6, q6, Tset6) - ((T6 - T_out)/Rw6) - ((T6 - T5)/R56) - ((T6 - T5)/R56)) / C6
-        dT7 = (self.q_func(T7, q7, Tset7) - ((T7 - T_out)/Rw7) - ((T7 - T6)/R67) - ((T7 - T6)/R67)) / C7
+        dT1 = 300*(self.q_func(T1, q1, Tset1) - ((T1 - T_out)/Rw1) - ((T1 - T2)/R12) - ((T1 - T3)/R123)) / C1
+        dT2 = 300*(self.q_func(T2, q2, Tset2) - ((T2 - T_out)/Rw2) - ((T2 - T1)/R12) - ((T2 - T3)/R123)) / C2
+        dT3 = 300*(self.q_func(T3, q3, Tset3) - ((T3 - T_out)/Rw3) - ((T3 - T1)/R123) - ((T3 - T2)/R123)) / C3
+        dT4 = 300*(self.q_func(T4, q4, Tset4) - ((T4 - T_out)/Rw4) - ((T4 - T7)/R47) - ((T4 - T7)/R47)) / C4
+        dT5 = 300*(self.q_func(T5, q5, Tset5) - ((T5 - T_out)/Rw5) - ((T5 - T4)/R45) - ((T5 - T4)/R45)) / C5
+        dT6 = 300*(self.q_func(T6, q6, Tset6) - ((T6 - T_out)/Rw6) - ((T6 - T5)/R56) - ((T6 - T5)/R56)) / C6
+        dT7 = 300*(self.q_func(T7, q7, Tset7) - ((T7 - T_out)/Rw7) - ((T7 - T6)/R67) - ((T7 - T6)/R67)) / C7
 
         
         return np.array([T1 + dT1, T2 + dT2, T3 + dT3, T4 + dT4, T5 + dT5, T6 + dT6, T7 + dT7]) 
@@ -163,7 +166,7 @@ class model:
     def simulate(self, params=None, training=True, plot=False):
         # Take the current parameters when training and the parameters of the model when testing
         if params is None:
-            params = self.parameters
+            params = self.parameters[1:]
         
         # Take the initial conditions and the time array depending to the set we use
         if training:
@@ -203,10 +206,12 @@ class model:
             name = "train"
             datesArray = self.dates_train
             T_out_vec = self.function_T_out(self.time_train)
+            T_set = self.getT_set(roomName, self.time_train)
         else:
             name= "test"
             datesArray = self.dates_test
             T_out_vec = self.function_T_out(self.time_test)
+            T_set = self.getT_set(roomName, self.time_test)
         
 
         plt.figure()
@@ -215,9 +220,11 @@ class model:
             plt.xlabel('Time')
             plt.ylabel('Temperature (°c)')
 
-            plt.plot(datesArray, trueValues, "b.", label='True values', alpha=0.1)
-            plt.plot(datesArray, simulatedValues, label='Simulated values')
-            plt.plot(datesArray, T_out_vec, label='Temperature outside')
+            plt.plot(datesArray, trueValues, "b.", label='Measured temperatures', alpha=0.1)
+            plt.plot(datesArray, simulatedValues, label='Simulated temperatures')
+            plt.plot(datesArray, T_out_vec, label='Temperature outside', alpha=0.3)
+            plt.plot(datesArray, T_set, label='Set point', alpha=0.3)
+
             plt.legend()
 
             fname = "plots/Model_simulation_"+name+"_"+roomName
@@ -225,6 +232,24 @@ class model:
 
         finally:
             plt.close()
+
+    def getT_set(self, name, set):
+        if name == 'kitchen':
+            T = self.function_T_set_kitchen(set)
+        elif name == 'livingroom':
+            T = self.function_T_set_livingroom(set)
+        elif name == 'diningroom':
+            T = self.function_T_set_diningroom(set)
+        elif name == 'bathroom':
+            T = self.function_T_set_bathroom(set)
+        elif name == 'bedroom1':
+            T = self.function_T_set_bedroom1(set)
+        elif name == 'bedroom2':
+            T = self.function_T_set_bedroom2(set)
+        elif name == 'bedroom3':
+            T = self.function_T_set_bedroom3(set)
+        return T
+
     
 
 if __name__ == '__main__':
@@ -236,8 +261,8 @@ if __name__ == '__main__':
     print("The initial objective value is : " + str(-initialObj))
 
     #Then optimize the parameters
-    #res = m.optimize()
-    #print(res)
+    res = m.optimize()
+    print(res)
 
     #See results on the trainig set (how well the optimization worked)
     finalObj = m.log_likelihood(None, training=True, plot=True)
