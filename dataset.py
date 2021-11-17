@@ -238,12 +238,30 @@ if __name__ == '__main__':
     dataset = Dataset(reload_all=False, interpolate=True)
 
 
-    X_train, X_test, y_train, y_test = dataset.train_test_sample_split(start_date="2020-05-24 19:40:00", length=50)
+    #X_train, X_test, y_train, y_test = dataset.train_test_sample_split(start_date="2020-05-24 19:40:00", length=50)
 
     #print(np.array(y_train.head(1)['current_value_house']))
 
-    print(X_train)
-    print(X_test)
+    #print(X_train)
+    #print(X_test)
 
-    dataset.plotDataset()
+    #dataset.plotDataset()
     #dataset.drawBoxplot()
+
+    pd.set_option("display.max.columns", None)
+    pd.set_option("display.max.rows", None)
+    rooms = dataset.data[['current_value_kitchen', 'current_value_diningroom', 'current_value_livingroom', 'current_value_bathroom', 'current_value_bedroom1', 'current_value_bedroom2', 'current_value_bedroom3']]
+    corr = rooms.corr()
+
+    print(corr)
+    
+    i_s = dataset.data.index[dataset.data['time'] == "2020-11-01 00:00:00"]
+    i_e = dataset.data.index[dataset.data['time'] == "2021-04-01 00:00:00"]
+
+    ds = dataset.data[i_s[0] : i_e[0]]
+
+    ds_living = ds[['current_value_outside','current_value_livingroom','setpoint_livingroom']]
+    print(ds_living.corr())
+
+    ds_living = ds[['current_value_outside','current_value_bedroom3','setpoint_bedroom3']]
+    print(ds_living.corr())
