@@ -169,8 +169,19 @@ class Dataset:
 
         else:
             return self.function_T_out, self.function_T_set_house
+    def getTemperaturesForInput(self):
+        #Get the tempratures in the rooms as function to train separately the rooms
+        Tkitchen = interp1d(self.data.index, self.data["current_value_kitchen"])
+        Tdinigroom = interp1d(self.data.index, self.data["current_value_diningroom"])
+        Tlivingroom = interp1d(self.data.index, self.data["current_value_livingroom"])
+        Tbathroom = interp1d(self.data.index, self.data["current_value_bathroom"])
+        Tbed1 = interp1d(self.data.index, self.data["current_value_bedroom1"])
+        Tbed2 = interp1d(self.data.index, self.data["current_value_bedroom2"])
+        Tbed3 = interp1d(self.data.index, self.data["current_value_bedroom2"])
 
-    def train_test_sample_split(self, start_date="2020-05-24 19:40:00", length=20, test_ratio=0.33, multi_z=False, shuffle=False):
+        return [Tkitchen, Tdinigroom, Tlivingroom, Tbathroom, Tbed1, Tbed2, Tbed3]
+
+    def train_test_sample_split(self, start_date="2020-05-24 19:40:00", length=20, test_ratio=0.5, multi_z=False, shuffle=False):
         """
         Separate the provied dataset into a train set and a test set
         :param start_date: [str ("YYYY-MM-DD")] 
