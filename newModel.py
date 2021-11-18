@@ -16,26 +16,39 @@ class model:
     parametersTried = []
     rooms = ['kitchen', 'diningroom', 'livingroom', 'bathroom', 'bedroom1', 'bedroom2', 'bedroom3']
 
+    #Variables for partial optimization
+    flag = False
+    optimIndex = None
 
     def __init__(self):
         #self.R = [15, 15, 30, 10, 15, 15, 12]
-        self.R = [6, 1.5, 2, 2, 2, 2, 2]
+        self.R = [4, 1.5, 2, 2, 2, 2, 2]
         self.C = [4*10**4, 4*10**4, 8*10**4, 2*10**4, 4*10**4, 5*10**4, 3*10**4]
         #self.q = [125, 125, 250, 62, 125, 160, 100]
         self.q = [100, 100, 200, 50, 100, 130, 80]
         # R12 R123 R47 R45 R56 R67
-        self.R_neighbour = [5, 5, 5, 5, 5, 5]
-
+        self.R_neighbour = [0.5, 3, 1, 1, 1, 2]
+        
         self.variance = 1
 
         tmp = [self.variance] + self.q + self.R + self.C + self.R_neighbour
         self.parameters = tmp
 
+        self.solver='SLSQP'
         
-        
+        ### If we want to put bounds
+        """
+        boundsR = (0.1, 10**2)
+        boundsC = (0.1, 10**2)
+        boundsQ = (0.1, 10**2)
+
+        self.bounds = []
+        self.bounds = self.bounds + self.complexity*[boundsR] + self.complexity*[boundsC] + [boundsQ]
+        self.Q = 1
+        """
         
         # Length of the set taken to train and test (33% for testing)
-        length = 2000
+        length = 3000
 
         ######################## Create dataset #######################
         # Take the data relative to the house to model
@@ -43,8 +56,8 @@ class model:
 
         # y_train and y_test return padas.Dataframes for true temperature inside the house
         # The index is ['kitchen', 'diningroom', 'livingroom', 'bathroom', 'bedroom1', 'bedroom2', 'bedroom3']
-        # dates_train and dates_test is juste a time vector of the observations for x axis in plots
-        self.dates_train, self.dates_test, self.y_train, self.y_test = dataset.train_test_sample_split(start_date="2020-11-03 10:40:00", length=length, multi_z=True)
+        # dates_train and dates_test is juste a time vector of the observations for x axis in plots #2020-11-03 10:40:00
+        self.dates_train, self.dates_test, self.y_train, self.y_test = dataset.train_test_sample_split(start_date="2020-11-01 00:00:00", length=length, multi_z=True)
         
         # Get the vector time for odeint and the initial conditions for the differential equations (in the order of vector rooms)
         self.time_train = np.array(self.y_train.index)
@@ -58,6 +71,133 @@ class model:
         self.function_T_out, self.function_T_set_kitchen, self.function_T_set_diningroom, \
                 self.function_T_set_livingroom, self.function_T_set_bathroom, self.function_T_set_bedroom1, \
                 self.function_T_set_bedroom2, self.function_T_set_bedroom3 = dataset.getInputs(multizone=True)
+        
+        self.setFunctions = [self.function_T_set_kitchen, self.function_T_set_diningroom, \
+                self.function_T_set_livingroom, self.function_T_set_bathroom, self.function_T_set_bedroom1, \
+                self.function_T_set_bedroom2, self.function_T_set_bedroom3]
+
+        self.temperaturesInside = dataset.getTemperaturesForInput()
+
+        # Topology of the house for each room, list of ids of the neighbour rooms considered (with a R between them)
+        self.topology = [[1,2],[0,2],[0,1],[4,6],[3,5],[4,6],[3,5]]
+        # Corresponding resistor : topologiResistor[i] return the resistors id linked to the room i in increasing id of room
+        self.topologyResistors = [[0,1],[0,1],[1,1],[3,2],[3,4],[4,5],[2,5]]
+    
+    def equations_room(self, roomID, currentT, t, params):
+
+        #Get input values
+        T_out = self.function_T_out(t)
+        T_set = self.setFunctions[roomID](t)
+        #Get temperatures in the neighbours (as inputs)
+
+        q = params[0]
+        Rout = params[1]
+        C = params[2]
+
+        Rin = []
+        Trooms = []
+        for i, id in enumerate(self.topology[roomID]):
+            Rin.append(params[3+i])
+            Trooms.append(self.temperaturesInside[id](t))
+
+        dT = 300 * (self.q_func(currentT, q, T_set)/C + (T_out - currentT)/(Rout*C))
+
+        for i in range(len(Rin)):
+            dT = dT + 300*(Trooms[i] - currentT)/(Rin[i]*C)
+        return currentT + dT
+
+    def simulate_room(self, roomID, params, plot=False):
+        # Takes values for code after
+        init = self.init_train[roomID]
+        timeArray = self.time_train
+        trueValues = self.y_train
+
+        T_room = np.zeros(len(timeArray)+1)
+        T_room[0] = init
+        # Compute the evolution of T_in in a set of time
+        #predict = odeint(func=self.equations_multizones, y0=init, t=timeArray, args=tuple(params))
+        for i, t in enumerate(timeArray):
+            T_room[i+1] = self.equations_room(roomID, T_room[i], t, params)
+        
+        # Plot the true values & the simulated ones for each room
+        if plot:
+            self.plotSimulation(T_room[1:], trueValues["current_value_"+self.rooms[roomID]], self.rooms[roomID], flag=True)
+            
+        
+        return T_room[1:]
+
+    def log_likelihood_room(self, params, roomID, plot=False):
+        #R, C, log_f = theta
+        
+        #To see what parameters are used for simulation
+        #print(params)
+
+        # Get the true values of the temperature inside each room during the time set 
+        # Simulate the model on the right time set
+        ObsValues = self.y_train["current_value_"+self.rooms[roomID]]
+        simulatedValues = self.simulate_room(roomID, params=params[1:], plot=plot)
+
+        #noise_var = np.exp(log_f) * 0.1
+        res = np.sum(norm.logpdf(ObsValues, loc=simulatedValues, scale=params[0]))/len(ObsValues)
+
+        #print(-res)
+        #print()
+
+        return res
+    
+    def optimize_room(self, roomID, initialParameters):
+
+        #initialParameters = [1, 100,4,4*10**4,5,5]
+        #roomID = 0
+
+        nll = lambda *args: -self.log_likelihood_room(*args)
+        soln = minimize(nll, initialParameters, args=(roomID), method=self.solver)
+
+        return soln
+
+    def optimize_per_room(self):
+        f = []
+        R_in = [[] for i in range(6)]
+        #Rrooms = np.zeros((7,2))
+
+        for i in range(7):
+            idx_R_in1 = self.topologyResistors[i][0]
+            idx_R_in2 = self.topologyResistors[i][1]
+            R_in1 = self.R_neighbour[idx_R_in1]
+            R_in2 = self.R_neighbour[idx_R_in2]
+            initParams = [self.variance, self.q[i], self.R[i], self.C[i],R_in1 ,R_in2]
+            
+            print("Optimizing room "+ str(i+1))
+            opt = self.optimize_room(i, initParams)
+            
+            #To plot (not necessary)
+            res = m.log_likelihood_room(opt.x,i, plot=True)
+
+            print(opt.x)
+            print(-res)
+            print()
+
+            #Handle results [f q Rout C Rin1 Rin2]
+            self.q[i] = opt.x[1]
+            self.R[i] = opt.x[2]
+            self.C[i] = opt.x[3]
+
+            f.append(opt.x[0])
+            R_in[idx_R_in1].append(opt.x[4])
+            R_in[idx_R_in2].append(opt.x[5])
+
+        print(f)
+        print(R_in)
+        self.f = sum(f)/len(f)
+        self.R_neighbour = [sum(i)/len(i) for i in R_in]
+
+        print("Optimizing the full model")
+        final = self.optimize()
+
+        self.parameters = final.x
+
+        return final
+
 
     def q_func(self, T_in, q_para, T_set):
         if (T_set - T_in) + 1 > 0:
@@ -100,7 +240,6 @@ class model:
         q5 = params[4]
         q6 = params[5]
         q7 = params[6]
-        
 
         Rw1 = params[7]
         Rw2 = params[8]
@@ -140,10 +279,19 @@ class model:
     def log_likelihood(self, params, training=True, plot=False):
         #R, C, log_f = theta
 
+        #To simulate and print after trainind with the best parameters
         if params is None:
             params = self.parameters
-        #To see what parameters are used by the optimizer
-        print(params)
+
+        #To optimize only some parameters depending on index
+        if self.flag:
+            tmp = self.parameters
+            for i, idx in enumerate(self.optimIndex):
+                tmp[idx] = params[i]
+            params = tmp
+        
+        #To see what parameters are used for simulation
+        #print(params)
 
         # Get the true values of the temperature inside each room during the time set 
         # Simulate the model on the right time set
@@ -160,6 +308,9 @@ class model:
         
         self.objectives.append(res)
         self.parametersTried.append(params)
+
+        #print(-res)
+        #print()
 
         return res
 
@@ -194,14 +345,37 @@ class model:
         
         return T_house[1:,:]
 
-    def optimize(self):
+    def optimize(self, indexes=None):
+        if indexes is None:
+            parametersToOptimize = self.parameters
+        else:
+            parametersToOptimize = [self.parameters[i] for i in indexes]
+            self.setFlag()
+            self.setOptimIndex(indexes)
 
         nll = lambda *args: -self.log_likelihood(*args)
-        soln = minimize(nll, self.parameters)
-        self.parameters = soln.x
+        soln = minimize(nll, parametersToOptimize, method=self.solver)
+
+        if indexes is None:
+            self.parameters = soln.x
+        else:
+            for i, idx in enumerate(indexes):
+                self.parameters[idx] = soln.x[i]
+
+        #Reset configuration
+        if indexes is not None:
+            self.setFlag(value=False)
+            self.setOptimIndex(None)
+
         return soln
 
-    def plotSimulation(self, simulatedValues, trueValues, roomName, training=True):
+    def setFlag(self, value=True):
+        self.flag = value
+
+    def setOptimIndex(self, indexes):
+        self.optimIndex = indexes
+
+    def plotSimulation(self, simulatedValues, trueValues, roomName, training=True, flag=False):
         if training:
             name = "train"
             datesArray = self.dates_train
@@ -212,6 +386,10 @@ class model:
             datesArray = self.dates_test
             T_out_vec = self.function_T_out(self.time_test)
             T_set = self.getT_set(roomName, self.time_test)
+        if flag:
+            prefix = "SingelRoom"
+        else:
+            prefix = ""
         
 
         plt.figure()
@@ -227,7 +405,7 @@ class model:
 
             plt.legend()
 
-            fname = "plots/Model_simulation_"+name+"_"+roomName
+            fname = "plots/"+prefix+"Model_simulation_"+name+"_"+roomName
             plt.savefig("{}.png".format(fname))
 
         finally:
@@ -255,13 +433,14 @@ class model:
 if __name__ == '__main__':
 
     m = model()
-
+    """
     #First see result with initial parameters
     initialObj = m.log_likelihood(None, training=True, plot=True)
     print("The initial objective value is : " + str(-initialObj))
 
     #Then optimize the parameters
-    res = m.optimize()
+    #res = m.optimize()
+    res = m.optimize(indexes=[0])
     print(res)
 
     #See results on the trainig set (how well the optimization worked)
@@ -271,4 +450,23 @@ if __name__ == '__main__':
     #See results on the test set (real efficiency of the model)
     testObj = m.log_likelihood(None, training=False, plot=True)
     print("The objective value on the test set is : " + str(-testObj))
+    """
+
+
+
+    #m.simulate_room(1,(100,4,4*10**4,5,5), plot=True)
+    #opt = m.optimize_room()
+    #print(opt)
+    #res = m.log_likelihood_room(opt.x,0, plot=True)
+
+    print(m.optimize_per_room())
+
+    #See results on the trainig set (how well the optimization worked)
+    finalObj = m.log_likelihood(None, training=True, plot=True)
+    print("The objective value after training is : " + str(-finalObj))
+
+    #See results on the test set (real efficiency of the model)
+    testObj = m.log_likelihood(None, training=False, plot=True)
+    print("The objective value on the test set is : " + str(-testObj))
+
     
