@@ -369,8 +369,6 @@ class model:
         #noise_var = np.exp(log_f) * 0.1
         #res = np.sum(norm.logpdf(ObsValues, loc=simulatedValues, scale=params[0]))/len(ObsValues)
         res = np.sum(t.logpdf(ObsValues, loc=simulatedValues, scale=params[0]))/len(ObsValues)
-        if math.isnan(res):
-            res = -10
         self.objectives.append(res)
         self.parametersTried.append(params)
 
