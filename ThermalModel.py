@@ -1,11 +1,12 @@
 import matplotlib.pyplot as plt
 import time
-
+import math
 from scipy.optimize import minimize
 from scipy.integrate import odeint
 import numpy as np
 from sklearn.metrics import mean_squared_error
 from scipy.stats import norm
+from scipy.stats import t
 
 from dataset import Dataset
 
@@ -14,7 +15,7 @@ def setBounds(value, keyword):
     R_in_interval = 2
     Cinterval = 1000
     f_interval = 1
-    q_interval = 10
+    q_interval = 2
 
     if keyword == "Rout":
         boundInf = value - R_out_interval
@@ -54,8 +55,9 @@ class model:
         #self.R = [15, 15, 30, 10, 15, 15, 12]
         self.R = [2, 1.5, 2, 2, 2, 2, 2]
         self.C = [4*10**4, 4*10**4, 8*10**4, 2*10**4, 4*10**4, 5*10**4, 3*10**4]
-        #self.q = [125, 125, 250, 62, 125, 160, 100]
-        self.q = [100, 80, 100, 50, 100, 100, 70]
+        
+        #self.q = [100, 80, 100, 50, 100, 100, 70]
+        self.q =[1, 1, 1, 1, 1, 1, 1]
         # R12 R123 R47 R45 R56 R67
         self.R_neighbour = [0.5, 3, 1, 1, 1, 2]
         
@@ -97,6 +99,8 @@ class model:
 
         self.temperaturesInside = dataset.getTemperaturesForInput()
 
+        self.waterTemperature = dataset.getWaterTemperature()
+
         # Topology of the house for each room, list of ids of the neighbour rooms considered (with a R between them)
         self.topology = [[1,2],[0,2],[0,1],[4,6],[3,5],[4,6],[3,5]]
         # Corresponding resistor : topologiResistor[i] return the resistors id linked to the room i in increasing id of room
@@ -104,12 +108,16 @@ class model:
 
     def getParameters(self):
         return self.parameters
-        
+
+    def setParameters(self, parameters):
+        self.parametres = parameters
+
     def equations_room(self, roomID, currentT, t, params):
 
         #Get input values
         T_out = self.function_T_out(t)
         T_set = self.setFunctions[roomID](t)
+        T_water = self.waterTemperature(t)
         #Get temperatures in the neighbours (as inputs)
 
         q = params[0]
@@ -122,7 +130,7 @@ class model:
             Rin.append(params[3+i])
             Trooms.append(self.temperaturesInside[id](t))
 
-        dT = 300 * (self.q_func(currentT, q, T_set)/C + (T_out - currentT)/(Rout*C))
+        dT = 300 * (self.q_func(currentT, q, T_set, T_water)/C + (T_out - currentT)/(Rout*C))
 
         for i in range(len(Rin)):
             dT = dT + 300*(Trooms[i] - currentT)/(Rin[i]*C)
@@ -136,6 +144,9 @@ class model:
 
         T_room = np.zeros(len(timeArray)+1)
         T_room[0] = init
+
+        self.lastTrad = 20
+        self.lastHeat = 0
         # Compute the evolution of T_in in a set of time
         #predict = odeint(func=self.equations_multizones, y0=init, t=timeArray, args=tuple(params))
         for i, t in enumerate(timeArray):
@@ -160,7 +171,9 @@ class model:
         simulatedValues = self.simulate_room(roomID, params=params[1:], plot=plot)
 
         #noise_var = np.exp(log_f) * 0.1
-        res = np.sum(norm.logpdf(ObsValues, loc=simulatedValues, scale=params[0]))/len(ObsValues)
+        #res = np.sum(norm.logpdf(ObsValues, loc=simulatedValues, scale=params[0]))/len(ObsValues)
+        res = np.sum(t.logpdf(ObsValues,28, loc=simulatedValues, scale=params[0]))/len(ObsValues)
+
 
         #print(-res)
         #print()
@@ -184,7 +197,8 @@ class model:
 
     def optimize_per_room(self):
         f = []
-        R_in = [[] for i in range(6)]
+        R_in = [list() for _ in range(6)]
+        print("I'm here")
         #Rrooms = np.zeros((7,2))
 
         for i in range(7):
@@ -225,14 +239,36 @@ class model:
 
         return final
 
-    def q_func(self, T_in, q_para, T_set):
-        if (T_set - T_in) + 0.5 > 0:
-            #Q = (T_set - T_in)/q_para
-            Q = q_para #will give us a line -> I think there is no correlation between the diff and the power developed by the heater
-            #devrait donner une ligne de pente proportionelle à q_para/5min + forme condensateur via C
-        else:
-            Q = 0
+    def q_func(self, T_in, q_para, T_set, T_water):
+
+        # if (T_set - T_in) + 0.5 > 0:
+        #     #Q = (T_set - T_in)/q_para
+        #     Q = q_para #will give us a line -> I think there is no correlation between the diff and the power developed by the heater
+        #     #devrait donner une ligne de pente proportionelle à q_para/5min + forme condensateur via C
+        # else:
+        #     Q = 0
     
+        # return Q
+        
+        
+        # if (T_set - T_in) + 0.5 > 0:
+        #     #Q = (T_set - T_in)/q_para
+        #     Q = (T_water - T_in)/q_para
+        # else:
+        #     Q = 0
+    
+        # return Q
+        if (T_set-T_in) +0.5 > 0:
+            Trad = T_water
+        else :
+            Trad = self.lastTrad - self.lastHeat
+
+        
+        Q = (Trad - T_in)/q_para
+
+        self.lastTrad = Trad
+        self.lastHeat = Q
+
         return Q
     
     def equations(self, y, t, params):
@@ -240,6 +276,7 @@ class model:
 
         #Get input values at time t
         T_out = self.function_T_out(t)
+        T_water = self.waterTemperature(t)
 
         Tset1 = self.function_T_set_kitchen(t)
         Tset2 = self.function_T_set_diningroom(t)
@@ -291,13 +328,13 @@ class model:
         R67 = params[26]
 
         # Set of differential equation (first order complexity)
-        dT1 = 300*(self.q_func(T1, q1, Tset1) - ((T1 - T_out)/Rw1) - ((T1 - T2)/R12) - ((T1 - T3)/R123)) / C1
-        dT2 = 300*(self.q_func(T2, q2, Tset2) - ((T2 - T_out)/Rw2) - ((T2 - T1)/R12) - ((T2 - T3)/R123)) / C2
-        dT3 = 300*(self.q_func(T3, q3, Tset3) - ((T3 - T_out)/Rw3) - ((T3 - T1)/R123) - ((T3 - T2)/R123)) / C3
-        dT4 = 300*(self.q_func(T4, q4, Tset4) - ((T4 - T_out)/Rw4) - ((T4 - T7)/R47) - ((T4 - T7)/R47)) / C4
-        dT5 = 300*(self.q_func(T5, q5, Tset5) - ((T5 - T_out)/Rw5) - ((T5 - T4)/R45) - ((T5 - T4)/R45)) / C5
-        dT6 = 300*(self.q_func(T6, q6, Tset6) - ((T6 - T_out)/Rw6) - ((T6 - T5)/R56) - ((T6 - T5)/R56)) / C6
-        dT7 = 300*(self.q_func(T7, q7, Tset7) - ((T7 - T_out)/Rw7) - ((T7 - T6)/R67) - ((T7 - T6)/R67)) / C7
+        dT1 = 300*(self.q_func(T1, q1, Tset1, T_water) - ((T1 - T_out)/Rw1) - ((T1 - T2)/R12) - ((T1 - T3)/R123)) / C1
+        dT2 = 300*(self.q_func(T2, q2, Tset2, T_water) - ((T2 - T_out)/Rw2) - ((T2 - T1)/R12) - ((T2 - T3)/R123)) / C2
+        dT3 = 300*(self.q_func(T3, q3, Tset3, T_water) - ((T3 - T_out)/Rw3) - ((T3 - T1)/R123) - ((T3 - T2)/R123)) / C3
+        dT4 = 300*(self.q_func(T4, q4, Tset4, T_water) - ((T4 - T_out)/Rw4) - ((T4 - T7)/R47) - ((T4 - T7)/R47)) / C4
+        dT5 = 300*(self.q_func(T5, q5, Tset5, T_water) - ((T5 - T_out)/Rw5) - ((T5 - T4)/R45) - ((T5 - T4)/R45)) / C5
+        dT6 = 300*(self.q_func(T6, q6, Tset6, T_water) - ((T6 - T_out)/Rw6) - ((T6 - T5)/R56) - ((T6 - T5)/R56)) / C6
+        dT7 = 300*(self.q_func(T7, q7, Tset7, T_water) - ((T7 - T_out)/Rw7) - ((T7 - T6)/R67) - ((T7 - T6)/R67)) / C7
 
         
         return np.array([T1 + dT1, T2 + dT2, T3 + dT3, T4 + dT4, T5 + dT5, T6 + dT6, T7 + dT7]) 
@@ -330,8 +367,10 @@ class model:
             simulatedValues = self.simulate(training=False, plot=plot)
 
         #noise_var = np.exp(log_f) * 0.1
-        res = np.sum(norm.logpdf(ObsValues, loc=simulatedValues, scale=params[0]))/len(ObsValues)
-        
+        #res = np.sum(norm.logpdf(ObsValues, loc=simulatedValues, scale=params[0]))/len(ObsValues)
+        res = np.sum(t.logpdf(ObsValues, loc=simulatedValues, scale=params[0]))/len(ObsValues)
+        if math.isnan(res):
+            res = -10
         self.objectives.append(res)
         self.parametersTried.append(params)
 
@@ -358,6 +397,9 @@ class model:
 
         T_house = np.zeros((len(timeArray)+1,7))
         T_house[0,:] = init
+
+        self.lastTrad = 20
+        self.lastHeat = 0
         # Compute the evolution of T_in in a set of time
         #predict = odeint(func=self.equations_multizones, y0=init, t=timeArray, args=tuple(params))
         for i, t in enumerate(timeArray):
@@ -431,7 +473,7 @@ class model:
             prefix = ""
         
 
-        plt.figure()
+        plt.figure() 
         try:
             plt.title(roomName)
             plt.xlabel('Time')
@@ -468,7 +510,8 @@ class model:
             T = self.function_T_set_bedroom3(set)
         return T
 
-    
+    def computeScores(self):
+        pass
 
 if __name__ == '__main__':
 
