@@ -177,9 +177,12 @@ class Dataset:
         Tbathroom = interp1d(self.data.index, self.data["current_value_bathroom"])
         Tbed1 = interp1d(self.data.index, self.data["current_value_bedroom1"])
         Tbed2 = interp1d(self.data.index, self.data["current_value_bedroom2"])
-        Tbed3 = interp1d(self.data.index, self.data["current_value_bedroom2"])
+        Tbed3 = interp1d(self.data.index, self.data["current_value_bedroom3"])
 
         return [Tkitchen, Tdinigroom, Tlivingroom, Tbathroom, Tbed1, Tbed2, Tbed3]
+    
+    def getWaterTemperature(self):
+        return interp1d(self.data.index, self.data["water_temperature"])
 
     def train_test_sample_split(self, start_date="2020-05-24 19:40:00", length=20, test_ratio=0.5, multi_z=False, shuffle=False):
         """
